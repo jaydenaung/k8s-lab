@@ -1,23 +1,32 @@
-# k8s-lab
-Kubernetes Lab
+# Kubernetes Setup (Docker)
+This lab details how to set up Kubernetes clusters on Ubuntu 20.04 Virtual Machines with Docker (as opposed to conatainerd).
 
 # Set up K8s on Ubuntu 20.04 on VM
-### Master
+
+First you need to create at least 3 VMS (one controller, and two worker nodes) running Ubuntu 20.04.
+
+
+## Bootstrapping Kubernetes Nodes 
+-  Master Node
 
 ```bash
 sudo hostnamectl set-hostname controller
 sudo timedatectl set-timezone Asia/Singapore
 ```
 
-### Worker 1
+- Worker 1
 ```bash
 sudo hostnamectl set-hostname worker1
+sudo timedatectl set-timezone Asia/Singapore
 ```
 
-### Worker 2
+- Worker 2
 ```bash
 sudo hostnamectl set-hostname worker2
+sudo timedatectl set-timezone Asia/Singapore
 ```
+
+## Do the following steps on ALL THREE NODES
 
 ```bash
 cat >>/etc/hosts<<EOF
@@ -26,7 +35,7 @@ cat >>/etc/hosts<<EOF
 10.2.2.7 worker2.k8 worker2
 EOF
 ```
-## Create configuration file for docker
+### Create configuration file for docker
 ```bash
 cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 overlay
@@ -51,13 +60,13 @@ EOF
 sudo sysctl --system
 ```
 
-# Prerequisites Docker
+# Prerequisites 
 ```bash
 sudo apt-get update && \
 sudo apt-get install -y apt-transport-https ca-certificates curl lsb-release gnupg
 ```
 
-# Install Docker
+## Install Docker on nodes
 ```bash
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 ```
@@ -67,6 +76,7 @@ echo \
   "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
   $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 ```
+
 ```bash
 sudo apt-get update -y
 sudo apt-get install docker-ce docker-ce-cli containerd.io -y
@@ -75,9 +85,6 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io -y
 ### Disable SWAP
 ```
 sudo swapoff -a
-```
-### For Ubuntu 20.04
-```bash
 sudo sed -i '/swap.img/d' /etc/fstab
 ```
 
@@ -86,7 +93,7 @@ To check SWAP and there should be no output:
 sudo swapon --show 
 ```
 
--  Install dependency packages:
+### Install dependency packages:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y apt-transport-https curl
@@ -97,6 +104,8 @@ sudo apt-get update && sudo apt-get install -y apt-transport-https curl
 sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg \
 https://packages.cloud.google.com/apt/doc/apt-key.gpg
 ```
+
+## Install Kubernetes packages
 
 **Add the Kubernetes apt repository:**
 ```bash
@@ -110,21 +119,13 @@ sudo apt-get update
 sudo apt-get install -y kubelet kubeadm kubectl
 ```
 
-```
-#sudo apt-get update
-#sudo apt-get install -y kubelet kubeadm kubectl
-#sudo apt-mark hold kubelet kubeadm kubectl
-
-```
-Install Kubernetes packages (Note: If you get a dpkg lock message, just wait a minute or two before trying the command again):
-#sudo apt-get install -y kubelet=1.20.1-00 kubeadm=1.20.1-00 kubectl=1.20.1-00
-
 Turn off automatic updates
 ```bash
 sudo apt-mark hold kubelet kubeadm kubectl
 ```
->If you're running docker
-```
+> If you're running docker
+
+```bash
 sudo mkdir /etc/docker
 cat <<EOF | sudo tee /etc/docker/daemon.json
 {
@@ -140,7 +141,7 @@ EOF
 
 Note: overlay2 is the preferred storage driver for systems running Linux kernel version 4.0 or higher, or RHEL or CentOS using version 3.10.0-514 and above.
 
-```
+```bash
 sudo systemctl enable docker
 sudo systemctl daemon-reload
 sudo systemctl restart docker
@@ -148,21 +149,26 @@ sudo systemctl restart docker
  ## Initialize the Cluster 
 
  Initialize the Kubernetes cluster on the control plane node using kubeadm (Note: This is only performed on the Control Plane Node):
- sudo kubeadm init --pod-network-cidr 192.168.0.0/16 --apiserver-advertise-address 10.2.2.5
 
+ ```bash
+ sudo kubeadm init --pod-network-cidr 192.168.0.0/16 --apiserver-advertise-address ${API-ServerIP}
+```
 
- # Set kubectl access:
+This will generate a token which you will need for Worker nodes to join the cluster. 
+
+ ### Set kubectl access:
+
  ```bash
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
-Test access to cluster:
+**Test access to cluster:**
 ```
 kubectl version
 ```
 
-###Install the Calico Network Add-On
+### Install the Calico Network Add-On
 On the Control Plane Node, install Calico Networking:
 ```
  kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
@@ -170,7 +176,7 @@ On the Control Plane Node, install Calico Networking:
 
  Check status of Calico components:
 
- ```
+ ```bash
  kubectl get pods -n kube-system
 ```
 
@@ -184,23 +190,24 @@ On the Control Plane Node, install Calico Networking:
 
  On both Worker Nodes, paste the kubeadm join command to join the cluster:
 
-> RUN JOIN COMMAND ONLY AS ROOT USER
-```
+> MAKE SURE TO RUN JOIN COMMAND ONLY AS ROOT USER
+
+```bash
  sudo kubeadm join <join command from previous command>
 ```
 ```bash
- kubeadm join 10.0.0.32:6443 --token cffnsb.ct4ek02lc2dujj95 \
-	--discovery-token-ca-cert-hash sha256:c571066522b4941e038f6f0e05ab7adaac37ca51b2889f7a639f7c8596619b75 
+ kubeadm join 10.0.0.32:6443 --token cffnsb.abcdnkfd \
+	--discovery-token-ca-cert-hash sha256:abchdkfandikfd
 ```
 
 On both Worker Nodes, paste the kubeadm join command to join the cluster:
-```
+```bash
  kubectl get nodes
 ```
 
 On the Control Plane Node, view cluster status (Note: You may have to wait a few moments to allow the cluster to become ready):
 
-```
+```bash
  kubectl get nodes
 ```
 
